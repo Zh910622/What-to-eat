@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>今天吃什么</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  min-height:100vh;
+  display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(160deg,#fff7ed 0%,#ffedd5 45%,#fee2e2 100%);
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+  color:#7c2d12;
+  padding:20px;
+}
+.app{width:100%;max-width:420px;text-align:center}
+h1{font-size:26px;letter-spacing:1px}
+.date{font-size:13px;color:#b45309;opacity:.75;margin:6px 0 26px}
+.card{
+  background:rgba(255,255,255,.85);
+  border-radius:24px;
+  padding:38px 20px 30px;
+  box-shadow:0 18px 40px -18px rgba(194,65,12,.35);
+  backdrop-filter:blur(6px);
+}
+.emoji{font-size:88px;line-height:1;display:inline-block}
+.emoji.spin{animation:wob .18s infinite}
+@keyframes wob{0%{transform:rotate(-8deg) scale(.96)}50%{transform:rotate(8deg) scale(1.04)}100%{transform:rotate(-8deg) scale(.96)}}
+.emoji.pop{animation:pop .45s cubic-bezier(.2,1.6,.4,1)}
+@keyframes pop{0%{transform:scale(.4)}100%{transform:scale(1)}}
+.name{font-size:34px;font-weight:800;margin:16px 0 6px}
+.dish{font-size:14px;color:#9a3412;opacity:.8}
+.status{font-size:12.5px;color:#b45309;opacity:.7;margin-top:14px;min-height:18px}
+button{
+  margin-top:22px;width:100%;padding:15px;border:none;border-radius:16px;
+  font-size:16px;font-weight:700;color:#fff;cursor:pointer;
+  background:linear-gradient(135deg,#f97316,#ea580c);
+  box-shadow:0 10px 22px -8px rgba(234,88,12,.55);
+  transition:transform .12s,box-shadow .12s;
+}
+button:active{transform:scale(.97)}
+button:disabled{background:#d6d3d1;color:#a8a29e;box-shadow:none;cursor:not-allowed}
+.hint{font-size:12px;color:#b45309;opacity:.6;margin-top:14px}
+</style>
+</head>
+<body>
+<main class="app">
+  <h1>今天吃什么？</h1>
+  <p class="date" id="date"></p>
+  <section class="card">
+    <div class="emoji" id="emoji">🍽️</div>
+    <div class="name" id="name">正在选…</div>
+    <div class="dish" id="dish"></div>
+    <div class="status" id="status"></div>
+    <button id="btn">不满意，反悔一次</button>
+    <p class="hint">每天点开自动定一餐，只有 1 次反悔机会 · 结果保存在本机</p>
+  </section>
+</main>
+<script>
+// 五个种类，每个配了几个推荐菜，抽到后随机挑一个显示
+var CATS=[
+  {name:'火锅',emoji:'🍲',dishes:['麻辣牛油锅','番茄浓汤锅','潮汕牛肉锅','菌菇养生锅']},
+  {name:'烧烤',emoji:'🍢',dishes:['羊肉串 + 烤茄子','东北烧烤','炭火烤鱼','韩式烤肉']},
+  {name:'汉堡',emoji:'🍔',dishes:['经典牛肉堡','双层芝士堡','炸鸡汉堡','手工小众堡']},
+  {name:'炒菜',emoji:'🥘',dishes:['鱼香肉丝','宫保鸡丁','番茄炒蛋盖饭','小炒黄牛肉']},
+  {name:'海鲜',emoji:'🦐',dishes:['蒜蓉粉丝蒸扇贝','椒盐皮皮虾','清蒸鲈鱼','海鲜大咖']}
+];
+var KEY='eattoday.v1';
+var $=function(id){return document.getElementById(id)};
+var emoji=$('emoji'),nameEl=$('name'),dishEl=$('dish'),status=$('status'),btn=$('btn');
+var spinning=false;
+
+function todayKey(){
+  var d=new Date();
+  return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);
+}
+function weekCN(){ return '星期'+'日一二三四五六'[new Date().getDay()]; }
+$('date').textContent=(new Date().getMonth()+1)+'月'+new Date().getDate()+'日 · '+weekCN();
+
+function load(){ try{return JSON.parse(localStorage.getItem(KEY))}catch(e){return null} }
+function save(s){ localStorage.setItem(KEY,JSON.stringify(s)) }
+
+function render(c,d){
+  emoji.textContent=c.emoji;
+  nameEl.textContent=c.name;
+  dishEl.textContent='推荐：'+d;
+}
+// 转盘动画：1.3 秒内随机切换，最后停在指定结果
+function spinTo(finalIdx,finalDish,done){
+  spinning=true;btn.disabled=true;
+  emoji.classList.remove('pop');emoji.classList.add('spin');
+  var t=setInterval(function(){
+    var c=CATS[Math.floor(Math.random()*CATS.length)];
+    emoji.textContent=c.emoji;
+    nameEl.textContent=c.name;
+    dishEl.textContent='…';
+  },80);
+  setTimeout(function(){
+    clearInterval(t);
+    emoji.classList.remove('spin');emoji.classList.add('pop');
+    render(CATS[finalIdx],finalDish);
+    spinning=false;
+    if(done)done();
+  },1300);
+}
+// 抽一个种类；传 exceptIdx 时保证和上一个不同（反悔必须换结果）
+function roll(exceptIdx){
+  var i;
+  do{ i=Math.floor(Math.random()*CATS.length); }while(exceptIdx!=null&&i===exceptIdx);
+  return i;
+}
+// 抽种类 + 随机推荐菜 + 保存
+function pickAndSave(idx,rerolled,after){
+  var c=CATS[idx];
+  var d=c.dishes[Math.floor(Math.random()*c.dishes.length)];
+  spinTo(idx,d,function(){
+    save({date:todayKey(),idx:idx,dish:d,rerolled:rerolled});
+    if(after)after();
+  });
+}
+
+function start(){
+  var s=load();
+  if(s&&s.date===todayKey()){
+    // 今天已经选过：直接显示结果
+    emoji.classList.add('pop');
+    render(CATS[s.idx],s.dish);
+    if(s.rerolled){
+      btn.disabled=true;btn.textContent='反悔机会已用完';
+      status.textContent='今天的结果已定，明天再来～';
+    }else{
+      btn.disabled=false;btn.textContent='不满意，反悔一次';
+      status.textContent='今天已选好，还有 1 次反悔机会';
+    }
+    return;
+  }
+  // 每天第一次打开：自动选一餐
+  pickAndSave(roll(),false,function(){
+    btn.disabled=false;btn.textContent='不满意，反悔一次';
+    status.textContent='这是今天的选择，可以反悔一次';
+  });
+}
+
+btn.addEventListener('click',function(){
+  if(spinning)return;
+  var s=load();
+  if(!s||s.date!==todayKey()||s.rerolled)return;   // 没结果或已反悔过：不响应
+  pickAndSave(roll(s.idx),true,function(){
+    btn.disabled=true;btn.textContent='反悔机会已用完';
+    status.textContent='反悔过啦，就吃这个！';
+  });
+});
+
+start();
+</script>
+</body>
+</html>
